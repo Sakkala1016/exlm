@@ -46,6 +46,31 @@ export const atomicResultStyles = `
                     .result-root.recommendation-badge {
                           margin: 40px 0px 0px;
                     }
+                    .result-field.title-thumbnail {
+                      display: flex;
+                    }
+                    .result-field.result-thumbnail {
+                    min-width: 200px;
+                    min-height: 120px;
+                    }
+                    .result-field-text-wrapper {
+                    padding-right: 28px;
+                    }
+                    .thumbnail-wrapper {
+                      position: relative;
+                      display: inline-block;
+                      cursor: pointer;
+                    }
+                    .thumbnail-img {
+                      display: block;
+                    }
+                    .thumbnail-playBtn {
+                      position: absolute;
+                      left: 50%;
+                      top: 50%;
+                      transform: translate(-50%, -50%);
+                      pointer-events: none;
+                    }
                     @media(min-width: 1024px) {
                       .result-item.desktop-only {
                         display: grid;
@@ -66,7 +91,7 @@ export const atomicResultStyles = `
                     }
                     atomic-result-section-excerpt {
                       color: #959595;
-                      font-size: var(--spectrum-font-size-50);
+                      font-size: var(--spectrum-font-size-75);
                       display: -webkit-box;
                       -webkit-line-clamp: 3; 
                       -webkit-box-orient: vertical;
@@ -77,7 +102,7 @@ export const atomicResultStyles = `
                     }
                     atomic-result-section-excerpt atomic-result-text {
                       color: #959595;
-                      font-size: var(--spectrum-font-size-50);
+                      font-size: var(--spectrum-font-size-75);
                     }
                     .result-title atomic-result-text, .mobile-result-title atomic-result-text {
                       font-size: var(--spectrum-font-size-100);
@@ -133,7 +158,7 @@ export const atomicResultStyles = `
                         flex-direction: row-reverse;
                         gap: 4px;
                         border: 1px solid #959595;
-                        color: #959595;
+                        color: var(--non-spectrum-grey-updated);
                       }
                     }
                     
@@ -339,9 +364,13 @@ export const atomicResultListStyles = `
 
                 </style>
 `;
-
+let isListenerAdded = false;
 export default function atomicResultHandler(block, placeholders) {
   const baseElement = block.querySelector('atomic-folded-result-list');
+  const searchLayout = block.querySelector('atomic-search-layout');
+  if (!searchLayout.classList.contains('no-results')) {
+    baseElement.classList.add('list-wrap-skeleton');
+  }
   const shadow = baseElement.shadowRoot;
   const container = shadow?.querySelector('[part="result-list"]');
 
@@ -351,12 +380,11 @@ export default function atomicResultHandler(block, placeholders) {
     });
     return;
   }
-
+  container.parentElement.part.add('list-wrap');
   // Make result section hidden and start adding skeleton.
   container.style.cssText = 'display: none;';
   container.dataset.view = isMobile() ? 'mobile' : 'desktop';
-  const skeletonWrapper = document.createElement('div');
-  skeletonWrapper.setAttribute('part', 'skeleton');
+  const skeletonWrapper = htmlToElement(`<div class="skeleton-wrapper" part="skeleton"></div>`);
   skeletonWrapper.innerHTML = renderAtomicSekeletonUI();
   container.parentElement.appendChild(skeletonWrapper);
   handleHeaderSearchVisibility();
@@ -365,6 +393,8 @@ export default function atomicResultHandler(block, placeholders) {
     const atomicBreadBox = document.querySelector('atomic-breadbox');
     const coveoClearBtn = atomicBreadBox?.shadowRoot?.querySelector('[part="clear"]');
     if (coveoClearBtn) {
+      const event = new CustomEvent(CUSTOM_EVENTS.SEARCH_CLEARED);
+      document.dispatchEvent(event);
       coveoClearBtn.click();
     }
   }
@@ -489,7 +519,45 @@ export default function atomicResultHandler(block, placeholders) {
   }
 
   const clearAllBtn = document.querySelector('.clear-label');
-  clearAllBtn.addEventListener('click', onClearBtnClick);
+  if (!isListenerAdded) {
+    clearAllBtn.addEventListener('click', onClearBtnClick);
+    isListenerAdded = true;
+  }
+
+  function openVideoModal(videoUrl) {
+    document.body.style.overflow = 'hidden';
+    const existingModal = document.getElementById('video-modal');
+    if (existingModal) existingModal.remove();
+    const modal = document.createElement('div');
+    modal.classList.add('tutorial-video-modal');
+    const modalContent = document.createElement('div');
+    modalContent.classList.add('tutorial-video-modal-content');
+   
+    const closeBtn = document.createElement('button');
+    closeBtn.classList.add('tutorial-video-modal-closeBtn');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.addEventListener('click', () => {
+      document.body.style.overflow = '';
+      modal.remove();
+    });
+
+    const iframe = document.createElement('iframe');
+    iframe.src = videoUrl;
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = 'none';
+    iframe.allow = "autoplay; fullscreen";
+    iframe.style.display = 'block';
+    iframe.allowFullscreen = true;
+
+    modalContent.appendChild(closeBtn);
+    modalContent.appendChild(iframe);
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+}
+
+
 
   const updateAtomicResultUI = () => {
     const results = container.querySelectorAll('atomic-result');
@@ -502,10 +570,6 @@ export default function atomicResultHandler(block, placeholders) {
           waitForChildElement(resultEl, hydrateResult);
           return;
         }
-        const blockLevelSkeleton = block.querySelector('.atomic-search-load-skeleton');
-        if (blockLevelSkeleton) {
-          block.removeChild(blockLevelSkeleton);
-        }
 
         const resultItem = resultShadow.querySelector(`.result-item.${isMobileView ? 'mobile-only' : 'desktop-only'}`);
         const resultContentType = resultItem?.querySelector('.result-content-type');
@@ -515,6 +579,12 @@ export default function atomicResultHandler(block, placeholders) {
           waitFor(hydrateResult);
           return;
         }
+
+        const blockLevelSkeleton = block.querySelector('.atomic-search-load-skeleton');
+        if (blockLevelSkeleton) {
+          block.removeChild(blockLevelSkeleton);
+        }
+
         const contentTypeElParent = contentTypeElWrap?.querySelector('ul');
         if (!contentTypeElParent) {
           waitFor(hydrateResult);
@@ -526,10 +596,11 @@ export default function atomicResultHandler(block, placeholders) {
         }
 
         // Remove skeleton
-        const skeleton = container.parentElement.querySelector('.atomic-skeleton');
+        const skeleton = container.parentElement.querySelector('.skeleton-wrapper');
         if (skeleton) {
           container.style.cssText = '';
-          container.parentElement.removeChild(skeletonWrapper);
+          baseElement.classList.remove('list-wrap-skeleton');
+          container.parentElement.removeChild(skeleton);
         }
 
         const atomicResultChildren = resultItem.querySelector('atomic-result-children');
@@ -540,7 +611,9 @@ export default function atomicResultHandler(block, placeholders) {
           const resultRoot = resultShadow.querySelector('.result-root');
           resultRoot.classList.add('recommendation-badge');
         }
-
+        
+        
+    
         const productElWrap = resultItem?.querySelector('.result-product')?.firstElementChild?.shadowRoot;
         const productElements = productElWrap?.querySelectorAll('li') || [];
         const contentTypeElements = contentTypeElParent?.querySelectorAll('li') || [];
@@ -591,7 +664,54 @@ export default function atomicResultHandler(block, placeholders) {
           decorateExternalLink(anchorTag);
           decorateIcons(anchorTag);
         }
+
+        const videoUrlEl = resultShadow.querySelector('atomic-result-text[field="video_url"]');
+        if (videoUrlEl) {
+          const videoUrl = videoUrlEl.textContent.trim();
+          const cleanUrl = videoUrl.split('?')[0];
+          const imgUrl = `${cleanUrl  }?format=jpeg`;
+          const thumbnailWrapper = isMobileView
+          ? resultShadow.querySelector('.mobile-result-thumbnail')
+          : resultShadow.querySelector('.result-thumbnail');
+          if (thumbnailWrapper) {
+            let img = thumbnailWrapper.querySelector('img');
+            if (!img) {
+              const videoTrigger = document.createElement('div');
+              videoTrigger.setAttribute('role', 'button');
+              videoTrigger.setAttribute('aria-label', 'Play video');
+              videoTrigger.style.cursor = 'pointer';
+              img = document.createElement('img');
+              img.classList.add('thumbnail-img');
+              img.alt = 'Video Thumbnail';
+              img.loading = 'lazy';
+              const wrapper = document.createElement('div');
+              wrapper.classList.add('thumbnail-wrapper');
+              const playButton = document.createElement('span');
+              playButton.classList.add('thumbnail-playBtn');
+              playButton.innerHTML = `
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  viewBox="0 0 64 64" 
+                  width="48" height="48" 
+                  style="position:absolute; top:50%; left:50%; transform: translate(-50%, -50%);
+                        fill: white; opacity: 0.8; pointer-events: none;">
+                  <circle cx="32" cy="32" r="30" fill="#1473e6"/>
+                  <polygon points="26,20 46,32 26,44" />
+                </svg>
+              `; 
+              wrapper.appendChild(img);
+              wrapper.appendChild(playButton);
+              videoTrigger.appendChild(wrapper);
+              thumbnailWrapper.appendChild(videoTrigger);
+              videoTrigger.addEventListener('click', () => {
+                openVideoModal(cleanUrl); 
+              });
+            }
+          img.src = imgUrl;
+          }
+        }
       };
+      
       hydrateResult();
     });
 
@@ -605,6 +725,8 @@ export default function atomicResultHandler(block, placeholders) {
     const event = new CustomEvent(CUSTOM_EVENTS.RESULT_UPDATED);
     document.dispatchEvent(event);
   };
+
+  
 
   const onResize = () => {
     const isMobileView = isMobile();
